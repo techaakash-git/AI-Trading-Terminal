@@ -20,3 +20,38 @@ header { justify-content: space-between; align-items: center; margin-bottom: 18p
 .verdict { display: inline-block; padding: 7px 12px; border-radius: 7px; margin: 5px 0 12px; }
 .verdict.pass { background: #103323; color: #16c784; }.verdict.reject { background: #341318; color: #ea3943; }
 @media (max-width: 900px) { .grid, .stats { grid-template-columns: 1fr; }.stats { grid-template-columns: repeat(2, 1fr); } header { align-items: flex-start; gap: 10px; flex-direction: column; } }
+
+/* Alert Styles */
+.alert-notifications { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+.alert-notification { background: #ea3943; color: white; padding: 12px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(234, 57, 67, 0.3); animation: slideIn 0.3s ease-out; }
+.alert-item { background: #161b24; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #252c38; transition: opacity 0.2s; }
+.alert-item.disabled { opacity: 0.5; }
+.alert-item:hover { border-color: #52617a; }
+.alert-info { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.alert-info strong { color: #e8ebf2; font-size: 14px; }
+.alert-details { color: #8992a4; font-size: 12px; }
+.fired-count { color: #e9b949; font-size: 11px; }
+.alert-actions { display: flex; gap: 6px; }
+.alert-actions button { background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: 6px; font-size: 16px; transition: background 0.2s; }
+.alert-actions button:hover { background: #1b2432; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 1001; }
+.modal { background: #0d1118; padding: 24px; border-radius: 14px; width: 420px; border: 1px solid #1b222d; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-header h3 { margin: 0; color: #e8ebf2; }
+.modal-header button { background: none; border: none; color: #8992a4; font-size: 24px; cursor: pointer; }
+.modal-header button:hover { color: #e8ebf2; }
+.alert-form { display: flex; flex-direction: column; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group label { color: #8992a4; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select { padding: 10px 12px; background: #111722; border: 1px solid #252c38; color: #e8ebf2; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { border-color: #52617a; }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.form-actions button { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+.form-actions button:first-child { background: #1b2432; color: #b9c1d0; border: 1px solid #252c38; }
+.form-actions button:first-child:hover { background: #252c38; }
+.form-actions button:last-child { background: #16c784; color: #070a0f; }
+.form-actions button:last-child:hover { background: #12a86e; }
+.alert-list { display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
