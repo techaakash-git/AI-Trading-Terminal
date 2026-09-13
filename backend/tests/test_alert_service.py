@@ -1,0 +1,7 @@
+from app.alerts.service import AlertService
+
+def test_alert_fires_once_per_upward_crossing():
+    service=AlertService(); alert=service.create({'symbol':'BTCUSDT','threshold':100,'direction':'up'})
+    assert not service.evaluate('BTCUSDT','price',99)
+    assert [item.id for item in service.evaluate('BTCUSDT','price',101)] == [alert.id]
+    assert not service.evaluate('BTCUSDT','price',102)
