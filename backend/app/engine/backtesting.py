@@ -41,4 +41,8 @@ def backtest(candles, strategy, initial_capital=10000.0):
     downside = [min(item, 0) for item in returns]; dstd = statistics.pstdev(downside) if len(downside) > 1 else 0
     peak, drawdown = initial_capital, 0
     for value in curve: peak, drawdown = max(peak, value), min(drawdown, (value - peak) / peak)
-    return BacktestResult((equity / initial_capital - 1) * 100, len(wins) / len(returns) * 100 if returns else 0, sum(wins) / abs(sum(losses)) if losses else (float('inf') if wins else 0), avg / std * math.sqrt(len(returns)) if std else 0, avg / dstd * math.sqrt(len(returns)) if dstd else 0, abs(drawdown) * 100, avg * 100, len(trades), curve, trades).__dict__
+    # Profit factor is unbounded when there are wins but zero losses; cap it to a
+    # large finite value so it stays JSON-serializable (json cannot encode inf).
+    PROFIT_FACTOR_CAP = 1e9
+    profit_factor = sum(wins) / abs(sum(losses)) if losses else (PROFIT_FACTOR_CAP if wins else 0)
+    return BacktestResult((equity / initial_capital - 1) * 100, len(wins) / len(returns) * 100 if returns else 0, profit_factor, avg / std * math.sqrt(len(returns)) if std else 0, avg / dstd * math.sqrt(len(returns)) if dstd else 0, abs(drawdown) * 100, avg * 100, len(trades), curve, trades).__dict__

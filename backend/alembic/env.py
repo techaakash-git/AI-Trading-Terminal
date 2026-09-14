@@ -1,10 +1,12 @@
 from logging.config import fileConfig
 from alembic import context
 from app.db.database import Base
-from app.db.models import CandleRecord, Alert, AlertHistory  # Import all models
+from app.db.models import CandleRecord, Alert, AlertHistory, User  # Import all models
 from app.core.config import settings
 config = context.config
-config.set_main_option('sqlalchemy.url', settings.database_url)
+# Convert async URL to sync URL for migrations
+sync_database_url = settings.database_url.replace('postgresql+asyncpg', 'postgresql+psycopg2')
+config.set_main_option('sqlalchemy.url', sync_database_url)
 # Skip logging config to avoid formatter errors
 # if config.config_file_name: fileConfig(config.config_file_name)
 target_metadata = Base.metadata

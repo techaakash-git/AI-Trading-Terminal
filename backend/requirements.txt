@@ -9,3 +9,7 @@ sqlalchemy>=2.0,<3
 asyncpg>=0.29,<1
 redis>=5,<7
 alembic>=1.13,<2
+psycopg2-binary>=2.9,<3
+passlib[bcrypt]>=1.7,<2
+python-jose[cryptography]>=3.3,<4
+slowapi>=0.1.9,<1

@@ -10,7 +10,11 @@ from ..market.realtime import hub
 from ..news.service import get_news
 from ..alerts.service import alerts, AlertCreate, AlertUpdate
 from ..db.database import get_db
+from ..auth.router import router as auth_router
+from ..auth.dependencies import get_current_active_user
+
 router=APIRouter()
+router.include_router(auth_router)
 @router.get('/health')
 async def health(): return {'status':'ok','service':'trading-api','version':'1.1.0', 'market': provider_status(), 'redis': hub.redis_available}
 @router.get('/market/candles')
@@ -40,7 +44,7 @@ async def parse_strategy(payload: dict):
 
 # Alert Management Endpoints
 @router.post('/alerts')
-async def create_alert(payload: AlertCreate, db: AsyncSession = Depends(get_db)):
+async def create_alert(payload: AlertCreate, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_active_user)):
     """Create a new alert."""
     try:
         alert = await alerts.create(payload, db)
@@ -67,7 +71,7 @@ async def get_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
     return alert.model_dump()
 
 @router.patch('/alerts/{alert_id}')
-async def update_alert(alert_id: str, payload: AlertUpdate, db: AsyncSession = Depends(get_db)):
+async def update_alert(alert_id: str, payload: AlertUpdate, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_active_user)):
     """Update an existing alert."""
     alert = await alerts.update(alert_id, payload, db)
     if not alert:
@@ -75,7 +79,7 @@ async def update_alert(alert_id: str, payload: AlertUpdate, db: AsyncSession = D
     return alert.model_dump()
 
 @router.delete('/alerts/{alert_id}')
-async def delete_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_alert(alert_id: str, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_active_user)):
     """Delete an alert."""
     success = await alerts.delete(alert_id, db)
     if not success:

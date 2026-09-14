@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from uuid import uuid4
 from pydantic import BaseModel, Field
@@ -8,7 +8,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..engine.alerts import CrossingStateMachine
 from ..db.models import Alert as AlertModel, AlertHistory
-from ..db.database import get_db
 
 class AlertCreate(BaseModel):
     name: str
@@ -144,7 +143,7 @@ class AlertService:
                     trigger_value=value,
                     condition_value=alert.condition_value,
                     direction=alert.direction,
-                    fired_at=datetime.utcnow()
+                    fired_at=datetime.now(UTC)
                 )
                 fired.append(fired_event)
 
@@ -154,7 +153,7 @@ class AlertService:
                     .where(AlertModel.id == alert.id)
                     .values(
                         fired_count=AlertModel.fired_count + 1,
-                        last_fired_at=datetime.utcnow()
+                        last_fired_at=datetime.now(UTC)
                     )
                 )
 
@@ -230,8 +229,8 @@ class AlertService:
             timeframe=alert_data.timeframe,
             enabled=True,
             notification_channels=alert_data.notification_channels,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             fired_count=0,
             last_fired_at=None
         )

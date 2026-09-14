@@ -2,35 +2,29 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CandlestickSeries, ColorType, createChart } from 'lightweight-charts';
+import {
+  alertNotificationSchema,
+  alertSchema,
+  marketMessageSchema,
+  type Alert,
+  type AlertFormInput,
+  type Analysis,
+} from '../lib/schemas';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 type StreamState = 'connecting' | 'live' | 'stale' | 'error';
-
-interface Alert {
-  id: string;
-  name: string;
-  symbol: string;
-  condition_type: string;
-  condition_value: number;
-  direction: string;
-  timeframe: string;
-  enabled: boolean;
-  notification_channels: string[];
-  created_at: string;
-  fired_count: number;
-  last_fired_at?: string;
-}
+export interface AlertToast { alert_id?: string; symbol: string; message: string; }
 
 export default function Home() {
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [timeframe, setTimeframe] = useState('1h');
-  const [analysis, setAnalysis] = useState<any>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [streamState, setStreamState] = useState<StreamState>('connecting');
   const [source, setSource] = useState('');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [showAlertForm, setShowAlertForm] = useState(false);
-  const [alertNotifications, setAlertNotifications] = useState<any[]>([]);
+  const [alertNotifications, setAlertNotifications] = useState<AlertToast[]>([]);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Load alerts
@@ -54,16 +48,16 @@ export default function Home() {
     const alertSocket = new WebSocket(`${API.replace(/^http/, 'ws')}/api/ws/alerts`);
 
     alertSocket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === 'alert') {
-        setAlertNotifications(prev => [message.data, ...prev.slice(0, 4)]); // Keep last 5
-        // Show browser notification if permitted
-        if (Notification.permission === 'granted') {
-          new Notification(`Alert: ${message.data.symbol}`, {
-            body: message.data.message,
-            icon: '/favicon.ico'
-          });
-        }
+      const parsed = alertNotificationSchema.safeParse(JSON.parse(event.data));
+      if (!parsed.success) return;
+      const { data } = parsed.data;
+      setAlertNotifications(prev => [data, ...prev.slice(0, 4)]); // Keep last 5
+      // Show browser notification if permitted
+      if (Notification.permission === 'granted') {
+        new Notification(`Alert: ${data.symbol}`, {
+          body: data.message,
+          icon: '/favicon.ico'
+        });
       }
     };
 
@@ -102,9 +96,10 @@ export default function Home() {
         socket.onerror = () => setStreamState('error');
         socket.onclose = () => alive && setStreamState('stale');
         socket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          if (message.type === 'candle' && message.data) { series.update(message.data); setStreamState('live'); }
-          else if (message.type === 'heartbeat') setStreamState('stale');
+          const parsed = marketMessageSchema.safeParse(JSON.parse(event.data));
+          if (!parsed.success) return;
+          if (parsed.data.type === 'candle') { series.update(parsed.data.data); setStreamState('live'); }
+          else if (parsed.data.type === 'heartbeat') setStreamState('stale');
         };
       } catch { if (alive) setStreamState('error'); }
     }
@@ -118,7 +113,7 @@ export default function Home() {
     finally { setLoading(false); }
   }
 
-  async function createAlert(alertData: any) {
+  async function createAlert(alertData: AlertFormInput) {
     try {
       const response = await fetch(`${API}/api/alerts`, {
         method: 'POST',
@@ -126,7 +121,7 @@ export default function Home() {
         body: JSON.stringify({ ...alertData, symbol })
       });
       if (response.ok) {
-        const newAlert = await response.json();
+        const newAlert = alertSchema.parse(await response.json());
         setAlerts(prev => [newAlert, ...prev]);
         setShowAlertForm(false);
       }
@@ -241,7 +236,7 @@ export default function Home() {
               <p>Entry: <b>{risk.entry?.toFixed(2) || '—'}</b></p>
               <p>Stop: <b>{risk.stop_loss?.toFixed(2) || '—'}</b></p>
               <p>Target: <b>{risk.target?.toFixed(2) || '—'}</b></p>
-              <p>Patterns: {(analysis.patterns || []).map((pattern: any) => pattern.name).join(', ') || 'None detected'}</p>
+              <p>Patterns: {(analysis.patterns || []).map((pattern) => pattern.name).join(', ') || 'None detected'}</p>
               <small>Python is the numerical source of truth. AI narration must only explain computed values.</small>
             </>
           ) : (
@@ -330,11 +325,11 @@ function AlertForm({
   onCancel,
   currentPrice
 }: {
-  onSubmit: (data: any) => void;
+  onSubmit: (data: AlertFormInput) => void;
   onCancel: () => void;
   currentPrice?: number;
 }) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<AlertFormInput>({
     name: '',
     condition_type: 'price',
     condition_value: currentPrice || 0,
@@ -371,7 +366,7 @@ function AlertForm({
             <label>Condition</label>
             <select
               value={formData.condition_type}
-              onChange={(e) => setFormData({...formData, condition_type: e.target.value})}
+              onChange={(e) => setFormData({...formData, condition_type: e.target.value as AlertFormInput['condition_type']})}
             >
               <option value="price">Price</option>
               <option value="rsi">RSI</option>
@@ -384,7 +379,7 @@ function AlertForm({
               <label>Direction</label>
               <select
                 value={formData.direction}
-                onChange={(e) => setFormData({...formData, direction: e.target.value})}
+                onChange={(e) => setFormData({...formData, direction: e.target.value as AlertFormInput['direction']})}
               >
                 <option value="up">Above</option>
                 <option value="down">Below</option>
