@@ -1,31 +1,62 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { CandlestickSeries, ColorType, createChart } from 'lightweight-charts';
+import { useEffect, useState } from 'react';
 import {
   alertNotificationSchema,
   alertSchema,
-  marketMessageSchema,
   type Alert,
   type AlertFormInput,
   type Analysis,
 } from '../lib/schemas';
+import MarketChart from '../components/MarketChart';
+import TradingViewWidget from '../components/TradingViewWidget';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-type StreamState = 'connecting' | 'live' | 'stale' | 'error';
 export interface AlertToast { alert_id?: string; symbol: string; message: string; }
 
 export default function Home() {
-  const [symbol, setSymbol] = useState('BTCUSDT');
+  const [symbol, setSymbol] = useState('XAUUSD');
   const [timeframe, setTimeframe] = useState('1h');
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
-  const [streamState, setStreamState] = useState<StreamState>('connecting');
-  const [source, setSource] = useState('');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [alertNotifications, setAlertNotifications] = useState<AlertToast[]>([]);
-  const chartRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [chartEngine, setChartEngine] = useState<'lightweight' | 'tradingview'>('tradingview');
+
+  // Sync theme with localStorage or system preference on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('app-theme') as 'dark' | 'light' | null;
+    if (saved === 'dark' || saved === 'light') {
+      setTheme(saved);
+      document.documentElement.setAttribute('data-theme', saved);
+    } else {
+      const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+      const initial = prefersLight ? 'light' : 'dark';
+      setTheme(initial);
+      document.documentElement.setAttribute('data-theme', initial);
+    }
+  }, []);
+
+  const setThemeMode = (newTheme: 'dark' | 'light') => {
+    setTheme(newTheme);
+    localStorage.setItem('app-theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
+  // Sync chart engine with localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('app-chart-engine') as 'lightweight' | 'tradingview' | null;
+    if (saved === 'lightweight' || saved === 'tradingview') {
+      setChartEngine(saved);
+    }
+  }, []);
+
+  const setChartEngineMode = (engine: 'lightweight' | 'tradingview') => {
+    setChartEngine(engine);
+    localStorage.setItem('app-chart-engine', engine);
+  };
 
   // Load alerts
   useEffect(() => {
@@ -70,42 +101,6 @@ export default function Home() {
       Notification.requestPermission();
     }
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    let chart: ReturnType<typeof createChart> | undefined;
-    let socket: WebSocket | undefined;
-    async function connect() {
-      try {
-        setStreamState('connecting');
-        const [historyResponse, statusResponse] = await Promise.all([
-          fetch(`${API}/api/market/candles?symbol=${symbol}&timeframe=${timeframe}&limit=300`),
-          fetch(`${API}/api/market/status`),
-        ]);
-        if (!historyResponse.ok || !chartRef.current) throw new Error('Market history unavailable');
-        const history = await historyResponse.json();
-        const status = await statusResponse.json();
-        if (!alive) return;
-        setSource(status.active_source || 'unknown');
-        chart = createChart(chartRef.current, { autoSize: true, layout: { textColor: '#d5d9e2', background: { type: ColorType.Solid, color: '#0b0e13' } }, grid: { vertLines: { color: '#161b24' }, horzLines: { color: '#161b24' } }, rightPriceScale: { borderColor: '#252b36' }, timeScale: { borderColor: '#252b36' } });
-        const series = chart.addSeries(CandlestickSeries, { upColor: '#16c784', downColor: '#ea3943', borderVisible: false, wickUpColor: '#16c784', wickDownColor: '#ea3943' });
-        series.setData(history.candles);
-        chart.timeScale().fitContent();
-        socket = new WebSocket(`${API.replace(/^http/, 'ws')}/api/ws/market/${symbol}?timeframe=${timeframe}`);
-        socket.onopen = () => setStreamState('live');
-        socket.onerror = () => setStreamState('error');
-        socket.onclose = () => alive && setStreamState('stale');
-        socket.onmessage = (event) => {
-          const parsed = marketMessageSchema.safeParse(JSON.parse(event.data));
-          if (!parsed.success) return;
-          if (parsed.data.type === 'candle') { series.update(parsed.data.data); setStreamState('live'); }
-          else if (parsed.data.type === 'heartbeat') setStreamState('stale');
-        };
-      } catch { if (alive) setStreamState('error'); }
-    }
-    void connect();
-    return () => { alive = false; socket?.close(); chart?.remove(); };
-  }, [symbol, timeframe]);
 
   async function analyze() {
     setLoading(true);
@@ -164,23 +159,62 @@ export default function Home() {
   const risk = analysis?.risk || {};
   return (
     <main>
-      <header>
-        <div>
-          <b>AI Trading Terminal</b>
-          <span className="sub"> BTCUSDT • XAUUSD • deterministic analytics</span>
+      <header className="terminal-header">
+        <div className="header-brand">
+          <span className="brand-badge">TERMINAL</span>
+          <div>
+            <h1 className="brand-title">AI Trading Platform</h1>
+            <span className="sub">BTCUSDT • XAUUSD • deterministic analytics</span>
+          </div>
         </div>
-        <div className="pills">
-          {['BTCUSDT', 'XAUUSD'].map(item =>
-            <button
-              className={symbol === item ? 'active' : ''}
-              onClick={() => setSymbol(item)}
-              key={item}
-            >
-              {item}
-            </button>
-          )}
+
+        <div className="header-controls">
+          <div className="control-group">
+            <span className="control-label">Symbol</span>
+            <div className="pills">
+              {['BTCUSDT', 'XAUUSD'].map(item => (
+                <button
+                  className={symbol === item ? 'active' : ''}
+                  onClick={() => setSymbol(item)}
+                  key={item}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="header-divider-vertical" />
+
+          <div className="control-group">
+            <span className="control-label">Theme</span>
+            <div className="theme-pills">
+              <button
+                type="button"
+                className={theme === 'dark' ? 'active' : ''}
+                onClick={() => setThemeMode('dark')}
+                title="Switch to dark mode"
+                aria-pressed={theme === 'dark'}
+              >
+                <span>🌙</span>
+                <span>Dark</span>
+              </button>
+              <button
+                type="button"
+                className={theme === 'light' ? 'active' : ''}
+                onClick={() => setThemeMode('light')}
+                title="Switch to light mode"
+                aria-pressed={theme === 'light'}
+              >
+                <span>☀️</span>
+                <span>Light</span>
+              </button>
+            </div>
+          </div>
         </div>
       </header>
+
+      <div className="header-separator-line" role="separator" aria-orientation="horizontal" />
 
       {/* Alert Notifications */}
       {alertNotifications.length > 0 && (
@@ -207,6 +241,41 @@ export default function Home() {
         <button onClick={() => setShowAlertForm(true)}>+ Alert</button>
       </section>
 
+      <section className="chart-section">
+        <div className="chart-header">
+          <span className="chart-title">Price Chart</span>
+          <div className="pills chart-switch" role="group" aria-label="Chart engine">
+            <button
+              type="button"
+              className={chartEngine === 'lightweight' ? 'active' : ''}
+              onClick={() => setChartEngineMode('lightweight')}
+              title="Render with Lightweight Charts v5"
+              aria-pressed={chartEngine === 'lightweight'}
+            >
+              <span>📈</span>
+              <span>Lightweight</span>
+            </button>
+            <button
+              type="button"
+              className={chartEngine === 'tradingview' ? 'active' : ''}
+              onClick={() => setChartEngineMode('tradingview')}
+              title="Embed the TradingView widget"
+              aria-pressed={chartEngine === 'tradingview'}
+            >
+              <span>📊</span>
+              <span>TradingView</span>
+            </button>
+          </div>
+        </div>
+        <div className="chart-frame">
+          {chartEngine === 'lightweight' ? (
+            <MarketChart symbol={symbol} timeframe={timeframe} theme={theme} />
+          ) : (
+            <TradingViewWidget symbol={symbol} timeframe={timeframe} theme={theme} />
+          )}
+        </div>
+      </section>
+
       <section className="stats">
         <Card t="Price" v={analysis ? Number(analysis.price).toFixed(2) : '—'} />
         <Card t="RSI 14" v={indicators.rsi14 ? indicators.rsi14.toFixed(2) : '—'} />
@@ -216,26 +285,37 @@ export default function Home() {
       </section>
 
       <section className="grid">
-        <div className="panel chart">
-          <div className="title">
-            Live market chart
-            <span className={streamState}>{streamState}</span>
-            {source && <span className="source">{source}</span>}
-          </div>
-          <div ref={chartRef} className="chartbox" />
-          {streamState === 'stale' && <p className="muted">Market stream is stale; the last completed candle remains displayed.</p>}
-          {streamState === 'error' && <p className="muted">Chart history is temporarily unavailable. Check the backend connection.</p>}
-        </div>
-
         <div className="panel">
           <div className="title">AI Analysis</div>
           {analysis ? (
             <>
+              {/* Symbol & Timeframe header */}
+              <div className="analysis-header">
+                <strong>{symbol}</strong> · <span>{timeframe}</span>
+              </div>
+
+              {/* Trend rationale */}
+              {indicators.trend_reason && (
+                <div className="analysis-section">
+                  <small className="analysis-section-label">Trend</small>
+                  <p>{indicators.trend_reason}</p>
+                </div>
+              )}
+
               <div className={`verdict ${risk.verdict}`}>{risk.verdict?.toUpperCase()}</div>
               <p>Direction: <b>{risk.direction}</b></p>
               <p>Entry: <b>{risk.entry?.toFixed(2) || '—'}</b></p>
               <p>Stop: <b>{risk.stop_loss?.toFixed(2) || '—'}</b></p>
               <p>Target: <b>{risk.target?.toFixed(2) || '—'}</b></p>
+
+              {/* Trade entry basis */}
+              {risk.reason && (
+                <div className="analysis-section">
+                  <small className="analysis-section-label">Entry Basis</small>
+                  <p>{risk.reason}</p>
+                </div>
+              )}
+
               <p>Patterns: {(analysis.patterns || []).map((pattern) => pattern.name).join(', ') || 'None detected'}</p>
               <small>Python is the numerical source of truth. AI narration must only explain computed values.</small>
             </>

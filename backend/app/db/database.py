@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,7 +23,11 @@ async def init_db():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         database_available = True
-    except SQLAlchemyError:
+    except (SQLAlchemyError, OSError, asyncio.TimeoutError):
+        # Connection-level failures (ConnectionRefused, DNS, timeout) raise
+        # OSError/TimeoutError, which SQLAlchemy does NOT wrap in SQLAlchemyError.
+        # Treat any DB availability failure as fatal-to-persistence only, not to
+        # the app — the whole point of graceful degradation here.
         database_available = False
         logger.warning('Database unavailable; continuing without candle persistence', exc_info=True)
     return database_available

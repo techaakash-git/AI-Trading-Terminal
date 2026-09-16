@@ -13,6 +13,8 @@ def sma(values: Sequence[float], period: int):
         window += values[i]-values[i-period]; out[i]=window/period
     return out
 
+# Exponential moving average seeded with a simple moving average of the first
+# `period` values. Returns a list of floats with None until enough data exists.
 def ema(values, period):
     _validate(values,period); out=[None]*len(values)
     if len(values)<period:return out
@@ -60,11 +62,48 @@ def support_resistance(candles, lookback=120, tolerance=0.003):
         else: clusters.append({'kind':kind,'price':p,'touches':1,'prices':[p]})
     return [{'kind':x['kind'],'price':x['price'],'touches':x['touches']} for x in sorted(clusters,key=lambda x:-x['touches'])[:10]]
 
+def ema_series(candles, periods=(20, 50, 200)):
+    """
+    Compute full EMA series for each requested period.
+
+    Returns a dict mapping each period to a list of {"time": int, "value": float}
+    dicts (only the candles for which the EMA is defined). ``time`` is the
+    candle's unix timestamp, ``value`` the EMA at that candle. This gives the
+    frontend the full-line data needed to overlay EMA curves on the chart.
+    """
+    closes=[c.close for c in candles]
+    out={}
+    for period in periods:
+        e=ema(closes,period)
+        out[period]=[
+            {'time':candles[i].time,'value':round(e[i],4)}
+            for i in range(len(candles)) if e[i] is not None
+        ]
+    return out
+
+def _trend_reason(trend, closes, e20, e50):
+    """Deterministic textual basis for a trend label, built from the same
+    computed EMA values that classified the trend (no LLM, no randomness).
+    Complies with the core rule: Python computes the numbers and the words
+    that describe them."""
+    price = closes[-1]
+    ema20 = e20[-1]
+    ema50 = e50[-1]
+    if trend == 'bullish':
+        return (f'Uptrend: EMA20 ({ema20:.2f}) > EMA50 ({ema50:.2f}) '
+                f'and price ({price:.2f}) is above EMA20 -> bullish alignment.')
+    if trend == 'bearish':
+        return (f'Downtrend: EMA20 ({ema20:.2f}) < EMA50 ({ema50:.2f}) '
+                f'and price ({price:.2f}) is below EMA20 -> bearish alignment.')
+    return (f'Neutral: EMA20 ({ema20:.2f}) vs EMA50 ({ema50:.2f}) and '
+            f'price ({price:.2f}) are not cleanly aligned -> no directional trend.')
+
+
 def calculate_indicators(candles):
     closes=[c.close for c in candles]; highs=[c.high for c in candles]; lows=[c.low for c in candles]
-    s20=sma(closes,20); e20=ema(closes,20); e50=ema(closes,50); r=rsi(closes,14); a=atr(highs,lows,closes,14); m=macd(closes)
+    s20=sma(closes,20); e20=ema(closes,20); e50=ema(closes,50); e200=ema(closes,200); r=rsi(closes,14); a=atr(highs,lows,closes,14); m=macd(closes)
     trend='bullish' if e20[-1] and e50[-1] and e20[-1]>e50[-1] and closes[-1]>e20[-1] else 'bearish' if e20[-1] and e50[-1] and e20[-1]<e50[-1] and closes[-1]<e20[-1] else 'neutral'
     change24=None
     if len(closes)>1:
         n=min(len(closes)-1,24 if len(closes)>25 else len(closes)-1); change24=(closes[-1]/closes[-1-n]-1)*100
-    return {'sma20':s20[-1],'ema20':e20[-1],'ema50':e50[-1],'rsi14':r[-1],'atr14':a[-1],'macd':m['macd'][-1],'macd_signal':m['signal'][-1],'macd_histogram':m['histogram'][-1],'trend':trend,'change24h_pct':change24,'support_resistance':support_resistance(candles)}
+    return {'sma20':s20[-1],'ema20':e20[-1],'ema50':e50[-1],'ema200':e200[-1],'rsi14':r[-1],'atr14':a[-1],'macd':m['macd'][-1],'macd_signal':m['signal'][-1],'macd_histogram':m['histogram'][-1],'trend':trend,'trend_reason':_trend_reason(trend, closes, e20, e50),'change24h_pct':change24,'support_resistance':support_resistance(candles)}

@@ -1,36 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  marketMessageSchema,
   alertNotificationSchema,
   alertSchema,
   analysisSchema,
   alertFormSchema,
 } from '../lib/schemas';
-
-describe('marketMessageSchema', () => {
-  it('accepts a valid candle message', () => {
-    const result = marketMessageSchema.safeParse({
-      type: 'candle',
-      data: { time: 1700000000, open: 1, high: 2, low: 0.5, close: 1.5 },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts a heartbeat message', () => {
-    const result = marketMessageSchema.safeParse({ type: 'heartbeat' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects a message missing required fields', () => {
-    const result = marketMessageSchema.safeParse({ type: 'candle', data: {} });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects an unknown type', () => {
-    const result = marketMessageSchema.safeParse({ type: 'foo' });
-    expect(result.success).toBe(false);
-  });
-});
 
 describe('alertNotificationSchema', () => {
   it('accepts an alert notification payload', () => {
@@ -122,5 +96,32 @@ describe('analysisSchema', () => {
   it('rejects non-object payload', () => {
     expect(analysisSchema.safeParse('hello').success).toBe(false);
     expect(analysisSchema.safeParse(42).success).toBe(false);
+  });
+
+  it('accepts the enhanced analysis payload (symbol, trend_reason, risk.reason)', () => {
+    const result = analysisSchema.safeParse({
+      symbol: 'XAUUSD',
+      price: 4570.97,
+      indicators: {
+        rsi14: 54.2,
+        atr14: 12.5,
+        trend: 'bullish',
+        trend_reason: 'Uptrend: EMA20 (4571.00) > EMA50 (4550.00) and price (4570.97) is above EMA20 -> bullish alignment.',
+      },
+      risk: {
+        verdict: 'pass',
+        direction: 'long',
+        entry: 4570.97,
+        stop_loss: 4545.97,
+        target: 4620.97,
+        reason: 'Uptrend confirmed: enter long at 4570.97 (current price). Stop-loss 4545.97 = 25.00 (2×ATR 12.50) below entry. Target 4620.97 = 2× stop-distance above entry -> risk-reward 1:2.',
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.indicators?.trend_reason).toContain('EMA20');
+      expect(result.data.risk?.reason).toContain('risk-reward');
+      expect(result.data.symbol).toBe('XAUUSD');
+    }
   });
 });

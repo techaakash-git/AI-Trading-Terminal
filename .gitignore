@@ -5,4 +5,5 @@ __pycache__/
 .next/
 node_modules/
 *.pyc
+*.tsbuildinfo
 .claude/

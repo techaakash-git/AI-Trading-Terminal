@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Literal, TypedDict
 from uuid import uuid4
 from pydantic import BaseModel, Field
-from ..engine.indicators import calculate_indicators
+from ..engine.indicators import calculate_indicators, ema_series
 from ..engine.patterns import detect_patterns
 from ..engine.risk import calculate_risk
 from ..news.service import get_news
@@ -30,10 +30,20 @@ class ConversationStore:
 conversations = ConversationStore()
 
 async def analyze(candles, symbol):
-    ind = calculate_indicators(candles); patterns = detect_patterns(candles)
+    ind = calculate_indicators(candles)
+    ema = ema_series(candles)
+    patterns = detect_patterns(candles)
     risk = calculate_risk(candles[-1].close, ind['atr14'], trend=ind['trend'])
     news = await get_news(symbol)
-    return {'symbol': symbol, 'price': candles[-1].close, 'indicators': ind, 'patterns': patterns, 'risk': risk, 'news': news, 'llm_rule': 'LLM may narrate these values only; it must not create trading numbers.'}
+    return {
+        'symbol': symbol,
+        'price': candles[-1].close,
+        'indicators': ind,
+        'ema': ema,
+        'patterns': patterns,
+        'risk': risk,
+        'news': news,
+    }
 
 async def narrate(candles, symbol):
     analysis = await analyze(candles, symbol)

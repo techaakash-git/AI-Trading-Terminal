@@ -13,3 +13,5 @@ psycopg2-binary>=2.9,<3
 passlib[bcrypt]>=1.7,<2
 python-jose[cryptography]>=3.3,<4
 slowapi>=0.1.9,<1
+pandas>=2,<4
+numpy>=1.26,<3

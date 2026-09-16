@@ -6,6 +6,8 @@ from ..models import Candle, Tick
 
 class DemoMarketProvider(MarketProvider):
     # Development-only deterministic market simulator.
+    name = 'development-demo'
+
     def _base(self, symbol: str) -> float:
         return 65000.0 if symbol.upper() == "BTCUSDT" else 2350.0
 

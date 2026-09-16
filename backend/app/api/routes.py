@@ -3,7 +3,8 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..market.service import get_candles,get_tick, provider_status
-from ..ai.agent import ChatRequest, analyze, narrate, run_chat
+from ..ai.agent import ChatRequest, narrate, run_chat, analyze
+from ..engine.lw_chart import build_chart_config
 from ..engine.backtesting import backtest
 from ..strategies.service import parse_strategy_intent, validate_strategy
 from ..market.realtime import hub
@@ -38,6 +39,47 @@ async def ai_chat(request: ChatRequest):
 @router.post('/backtests')
 async def run_backtest(payload:dict):
     s=validate_strategy(payload.get('strategy',{})); d=await get_candles(payload.get('symbol','BTCUSDT'),payload.get('timeframe','1h'),min(int(payload.get('limit',1000)),5000)); return {'strategy':s.model_dump(),'result':backtest(d,s.model_dump())}
+@router.get('/chart/config')
+async def chart_config(
+    symbol: str = 'BTCUSDT',
+    timeframe: str = '1h',
+    chart_type: str = 'candlestick',
+    show_emas: bool = True,
+    show_volume: bool = True,
+    theme: str = 'dark',
+):
+    """Return Lightweight Charts config for the given symbol/timeframe."""
+    if theme not in ('dark', 'light'):
+        theme = 'dark'
+    import pandas as pd
+    candles_data = await get_candles(symbol, timeframe, 300)
+    analysis_data = await analyze(candles_data, symbol.upper())
+
+    patterns = analysis_data.get('patterns', [])
+    technical_summary = {
+        'price': analysis_data.get('price', {}),
+        'indicators': analysis_data.get('indicators', {}),
+    }
+    indicators = analysis_data.get('indicators', {})
+
+    df_data = [c.model_dump() for c in candles_data]
+    df = pd.DataFrame(df_data)
+    df['timestamp'] = pd.to_datetime(df['time'], unit='s')
+
+    # analyze() returns ema keys as ints (20/50/200); normalise to strings
+    # so build_chart_config can match them against EMA_COLORS.
+    raw_ema = analysis_data.get('ema', {})
+    ema_series = {str(k): v for k, v in raw_ema.items()}
+
+    cfg = build_chart_config(
+        df, technical_summary, patterns=patterns,
+        chart_type=chart_type, show_emas=show_emas,
+        show_volume=show_volume, height=500,
+        theme=theme,
+        ema_series=ema_series,
+        support_resistance_levels=indicators.get('support_resistance', []),
+    )
+    return {'config': cfg}
 @router.post('/strategies/parse')
 async def parse_strategy(payload: dict):
     return parse_strategy_intent(str(payload.get('text', '')), str(payload.get('name', 'Natural-language strategy'))).model_dump()

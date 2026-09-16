@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, json, logging
+import asyncio, json, logging, time
 from collections import defaultdict
 try:
     import redis.asyncio as redis
@@ -10,12 +10,15 @@ from .aggregator import CandleAggregator
 from ..core.config import settings
 
 class RealtimeHub:
+    REDIS_RETRY_INTERVAL = 5  # seconds between Redis reconnection probes while it is down
+
     def __init__(self):
         self.redis = redis.from_url(settings.redis_url, decode_responses=True) if redis else None
         self._tasks = {}
         self._aggregators = {}
         self._local_subscribers: dict[str, set[asyncio.Queue[str]]] = defaultdict(set)
         self.redis_available = False
+        self._redis_retry_at = float('-inf')
 
     def channel(self, symbol: str, timeframe: str) -> str:
         return f'market:{symbol.upper()}:{timeframe}'
@@ -33,10 +36,16 @@ class RealtimeHub:
             if queue.full():
                 _ = queue.get_nowait()
             queue.put_nowait(payload)
+        # Local delivery above must never be gated by an unreachable Redis:
+        # a hung publish would stall the market stream, starving every
+        # subscriber (including the live chart) of candle updates.
+        if self.redis is None:
+            return
+        if not self.redis_available and time.monotonic() - self._redis_retry_at < self.REDIS_RETRY_INTERVAL:
+            return
+        self._redis_retry_at = time.monotonic()
         try:
-            if self.redis is None:
-                raise OSError('Redis client is not installed')
-            await self.redis.publish(channel, payload)
+            await asyncio.wait_for(self.redis.publish(channel, payload), timeout=1)
             self.redis_available = True
         except Exception:
             self.redis_available = False

@@ -1,34 +1,11 @@
 import { z } from 'zod';
-import type { CandlestickData, Time } from 'lightweight-charts';
 
 /**
  * Frontend validation layer (AGENT_RULES rule 8): external input crossing the
- * API and WebSocket boundary is validated with Zod before it is rendered or
- * passed to the chart. Python remains the numerical source of truth; these
- * schemas only guard the client against malformed/unknown payloads.
+ * API and WebSocket boundary is validated with Zod before it is rendered.
+ * Python remains the numerical source of truth; these schemas only guard the
+ * client against malformed/unknown payloads.
  */
-
-// ---- Market WebSocket payloads ----
-// LWC Time = UTCTimestamp (number) | BusinessDay ({ year, month, day }) | string
-const businessDaySchema = z.object({ year: z.number(), month: z.number(), day: z.number() });
-const timeSchema = z.union([z.string(), z.number(), businessDaySchema]);
-
-// We cast through `as unknown` because z.infer gives a wider type than LWC's
-// Time branded alias, but the values are always compatible at runtime.
-const candleSchema = z.object({
-  time: timeSchema,
-  open: z.number(),
-  high: z.number(),
-  low: z.number(),
-  close: z.number(),
-}) as z.ZodType<CandlestickData<Time>>;
-
-export const marketMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('candle'), data: candleSchema }),
-  z.object({ type: z.literal('heartbeat') }),
-]);
-
-export type MarketMessage = z.infer<typeof marketMessageSchema>;
 
 // ---- Alert realtime WebSocket payloads ----
 export const alertNotificationSchema = z.object({
@@ -79,12 +56,14 @@ const riskSchema = z.object({
   entry: z.number().optional(),
   stop_loss: z.number().optional(),
   target: z.number().optional(),
+  reason: z.string().optional(),
 });
 
 const indicatorsSchema = z.object({
   rsi14: z.number().optional(),
   atr14: z.number().optional(),
   trend: z.string().optional(),
+  trend_reason: z.string().optional(),
 });
 
 export const analysisSchema = z

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math, statistics
-from .indicators import atr, ema
+from .indicators import atr, ema, rsi as calculate_rsi
 
 @dataclass
 class BacktestResult:
@@ -12,14 +12,42 @@ def backtest(candles, strategy, initial_capital=10000.0):
     fast, slow = int(strategy.get('fast', 20)), int(strategy.get('slow', 50))
     risk_pct, stop_mult = float(strategy.get('risk_pct', 1)), float(strategy.get('stop_atr_multiple', 2))
     target_rr = float(strategy.get('target_risk_reward', 2))
+    rsi_buy_below = strategy.get('rsi_buy_below')
+    price_above_ema = strategy.get('price_above_ema')
     closes, highs, lows = [c.close for c in candles], [c.high for c in candles], [c.low for c in candles]
     ef, es, atr_values = ema(closes, fast), ema(closes, slow), atr(highs, lows, closes, 14)
+
+    # Precompute RSI if needed for entry filters
+    rsi_values = None
+    if rsi_buy_below is not None:
+        rsi_values = calculate_rsi(closes, 14)
+
+    # Precompute EMA for price_above_ema filter if needed
+    ema_for_filter = None
+    if price_above_ema is not None:
+        ema_for_filter = ema(closes, price_above_ema)
+
     equity, curve, trades, next_free = initial_capital, [initial_capital], [], max(fast, slow)
     for signal_index in range(max(fast, slow), len(candles) - 1):
         if signal_index < next_free or None in (ef[signal_index], es[signal_index], ef[signal_index - 1], es[signal_index - 1], atr_values[signal_index]):
             curve.append(equity); continue
         side = 1 if ef[signal_index] > es[signal_index] and ef[signal_index - 1] <= es[signal_index - 1] else -1 if ef[signal_index] < es[signal_index] and ef[signal_index - 1] >= es[signal_index - 1] else 0
         if not side: curve.append(equity); continue
+
+        # Apply additional entry filters if specified
+        if side == 1:  # Long entry
+            if rsi_buy_below is not None and rsi_values is not None:
+                if rsi_values[signal_index] is not None and rsi_values[signal_index] >= rsi_buy_below:
+                    curve.append(equity)
+                    continue
+            if price_above_ema is not None and ema_for_filter is not None:
+                if ema_for_filter[signal_index] is not None and closes[signal_index] <= ema_for_filter[signal_index]:
+                    curve.append(equity)
+                    continue
+        elif side == -1:  # Short entry
+            # Entry filters above are long-side conditions (rsi_buy_below /
+            # price_above_ema); shorts keep the plain EMA cross.
+            pass
         entry_index, entry, distance = signal_index + 1, candles[signal_index + 1].open, atr_values[signal_index] * stop_mult
         stop, target = (entry - distance, entry + distance * target_rr) if side == 1 else (entry + distance, entry - distance * target_rr)
         exit_index, exit_price, reason = len(candles) - 1, candles[-1].close, 'end_of_data'

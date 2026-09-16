@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from ..core.config import settings
 
-SYMBOLS = ('BTCUSDT','XAUUSD')
+SYMBOLS = ('XAUUSD',)  # 'BTCUSDT' commented out to reduce API rate limit usage
 TIMEFRAMES = tuple(TIMEFRAME_SECONDS)
 
 class MarketStream:
@@ -33,7 +33,10 @@ class MarketStream:
                 stmt = insert(CandleRecord).values(symbol=symbol,timeframe=timeframe,time=candle.time,open=candle.open,high=candle.high,low=candle.low,close=candle.close,volume=candle.volume)
                 stmt = stmt.on_conflict_do_update(index_elements=['symbol','timeframe','time'], set_={'high':candle.high,'low':candle.low,'close':candle.close,'volume':candle.volume})
                 await session.execute(stmt); await session.commit()
-        except SQLAlchemyError:
+        except Exception:
+            # Persistence is best-effort: a down/absent database (e.g. local
+            # dev without Docker) surfaces as OSError (ConnectionRefusedError),
+            # which is not a SQLAlchemyError and must not kill the stream loop.
             return
 
     async def _run(self, symbol):
@@ -48,6 +51,6 @@ class MarketStream:
                     await self._persist(symbol,tf,closed)
                     self.aggs[(symbol,tf)].last_closed = None
                 await self._persist(symbol,tf,candle)
-            await asyncio.sleep(1)
+            await asyncio.sleep(60) # Increased to 60s to respect free tier rate limit (8 calls/min)
 
 stream = MarketStream()
