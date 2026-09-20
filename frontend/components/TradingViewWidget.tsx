@@ -8,6 +8,14 @@ interface TradingViewWidgetProps {
   theme: 'dark' | 'light';
 }
 
+declare global {
+  interface Window {
+    TradingView?: {
+      widget: (config: Record<string, unknown>) => void;
+    };
+  }
+}
+
 /** Symbol map to well-known TradingView tickers. */
 const SYMBOL_MAP: Record<string, string> = {
   BTCUSDT: 'BINANCE:BTCUSDT',
@@ -24,17 +32,32 @@ const INTERVAL_MAP: Record<string, string> = {
   '1d': 'D',
 };
 
-const WIDGET_SRC = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+const WIDGET_SRC = 'https://s3.tradingview.com/tv.js';
 
-/**
- * TradingView Advanced Chart embed widget.
- *
- * TradingView's loader reads the JSON config from the text content of the
- * injected `<script src="…embed-widget-advanced-chart.js">` tag that follows
- * the widget container div, so both must be re-created every time the
- * symbol/timeframe/theme changes. The previous instance (DOM node + its
- * loader bookkeeping) is removed so the overlay never stacks widgets.
- */
+function loadTradingView(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.TradingView) {
+      resolve();
+      return;
+    }
+
+    const existing = document.querySelector(`script[src="${WIDGET_SRC}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('TradingView script failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.async = true;
+    script.src = WIDGET_SRC;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('TradingView script failed to load'));
+    document.head.appendChild(script);
+  });
+}
+
 export default function TradingViewWidget({
   symbol,
   timeframe,
@@ -43,41 +66,55 @@ export default function TradingViewWidget({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const container = containerRef.current;
     if (!container) return;
 
-    // Wipe any previous widget (including its DOM + loader bookkeeping).
-    container.innerHTML = '';
+    const render = async () => {
+      try {
+        container.innerHTML = '';
+        await loadTradingView();
+        if (cancelled) return;
 
-    const widgetDiv = document.createElement('div');
-    widgetDiv.className = 'tradingview-widget-container__widget';
-    widgetDiv.style.height = '100%';
-    container.appendChild(widgetDiv);
+        const widgetId = `tv-widget-${symbol}-${timeframe}-${theme}`;
+        const widgetRoot = document.createElement('div');
+        widgetRoot.id = widgetId;
+        widgetRoot.className = 'tradingview-widget-container__widget';
+        widgetRoot.style.height = '100%';
+        container.appendChild(widgetRoot);
 
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.async = true;
-    script.src = WIDGET_SRC;
-    script.text = JSON.stringify({
-      autosize: true,
-      symbol: SYMBOL_MAP[symbol] ?? `OANDA:${symbol}`,
-      interval: INTERVAL_MAP[timeframe] ?? '60',
-      timezone: 'Etc/UTC',
-      theme,
-      style: '1', // candlesticks
-      locale: 'en',
-      allow_symbol_change: true,
-      support_host: 'https://www.tradingview.com',
-    });
-    script.onerror = () => {
-      widgetDiv.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)">' +
-        'TradingView widget could not load (are you offline?). Switch back to Lightweight Charts.</div>';
+        if (!window.TradingView?.widget) {
+          throw new Error('TradingView widget API is unavailable');
+        }
+
+        window.TradingView.widget({
+          container_id: widgetId,
+          autosize: true,
+          symbol: SYMBOL_MAP[symbol] ?? `OANDA:${symbol}`,
+          interval: INTERVAL_MAP[timeframe] ?? '60',
+          timezone: 'Etc/UTC',
+          theme,
+          style: '1',
+          locale: 'en',
+          allow_symbol_change: true,
+          support_host: 'https://www.tradingview.com',
+        });
+      } catch (error) {
+        if (!cancelled) {
+          container.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)">' +
+            'TradingView widget could not load. Switch back to Lightweight Charts.</div>';
+        }
+      }
     };
-    container.appendChild(script);
+
+    render();
 
     return () => {
-      container.innerHTML = '';
+      cancelled = true;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
     };
   }, [symbol, timeframe, theme]);
 

@@ -1,9 +1,17 @@
 from __future__ import annotations
+import time
 from .provider_manager import build_manager
 
 # The manager owns provider selection and failover. It starts from config and
 # transparently switches providers when one is rate-limited (HTTP 429).
 _manager = build_manager()
+
+# Historical candle cache: a 300-point chart costs ~300 Twelve Data credits,
+# so repeated page loads/refreshes must reuse the last fetch instead of
+# burning the daily budget. Only results served by the primary provider are
+# cached; degraded/free fallback data is never frozen in the cache.
+_CANDLE_CACHE_TTL_S = 100
+_candle_cache: dict[tuple, tuple[float, list]] = {}
 
 
 def provider_status() -> dict:
@@ -15,7 +23,24 @@ def provider_status() -> dict:
 async def get_candles(symbol: str, timeframe: str, limit: int = 300):
     symbol = symbol.upper()
     limit = min(max(limit, 50), 5000)
-    return await _manager.historical(symbol, timeframe, limit)
+
+    cached = _candle_cache.get((symbol, timeframe, limit))
+    if cached is not None:
+        cached_at, candles = cached
+        if time.time() - cached_at <= _CANDLE_CACHE_TTL_S:
+            return candles
+        _candle_cache.pop((symbol, timeframe, limit), None)
+
+    candles = await _manager.historical(symbol, timeframe, limit)
+
+    # Cache only when the configured primary provider actually served (first in
+    # the chain). While degraded onto a fallback, next request retries the
+    # primary promptly instead of serving frozen fallback data.
+    providers = _manager.status().get('providers', [])
+    primary = providers[0]['name'] if providers else None
+    if primary and _manager.status().get('active_source') == primary:
+        _candle_cache[(symbol, timeframe, limit)] = (time.time(), candles)
+    return candles
 
 
 async def get_tick(symbol: str):

@@ -64,12 +64,6 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    // Both the payload fetch and chart construction happen here; the effect
-    // re-runs whenever symbol/timeframe/theme changes, tearing down the old
-    // chart + websocket first.
-    //
-    // The container guard is duplicated inside mount() because TypeScript
-    // drops narrowing of the outer const inside an async closure.
     if (!containerRef.current) return;
 
     let disposed = false;
@@ -88,12 +82,15 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
         show_volume: 'true',
         theme,
       });
+
       let config: { chart?: DeepPartial<ChartOptions>; series?: BackendSeries[] } | null = null;
       try {
         const response = await fetch(`${API}/api/chart/config?${params}`);
         if (!response.ok) throw new Error(`chart/config ${response.status}`);
         const body = await response.json();
+        // Backend returns {"config": [{"chart": ..., "series": [...]}]}
         config = body?.config?.[0] ?? null;
+        console.log('[MarketChart] config:', config);
       } catch (error) {
         console.error('[MarketChart] failed to load config:', error);
         return;
@@ -101,6 +98,7 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
       if (disposed || !config) return;
 
       // 2. Create the chart.
+      await new Promise(resolve => requestAnimationFrame(resolve));
       const chart = createChart(host, {
         autoSize: true,
         ...(config.chart ?? {}),
@@ -166,6 +164,9 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
           });
         }
       };
+      ws.onerror = (event) => console.error('[MarketChart] WebSocket error:', event);
+      ws.onopen = () => console.log('[MarketChart] WebSocket opened.');
+      ws.onclose = () => console.log('[MarketChart] WebSocket closed.');
     }
 
     mount();

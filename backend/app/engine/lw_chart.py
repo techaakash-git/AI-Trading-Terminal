@@ -58,6 +58,12 @@ def _volume_series(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return out
 
 
+def _all_zero_volume(df: pd.DataFrame) -> bool:
+    """True when every volume value is missing/zero (Twelve Data does not
+    report volume for XAU/USD)."""
+    return df["volume"].isna().all() or (df["volume"] == 0).all()
+
+
 def _pattern_markers(df: pd.DataFrame, patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """One marker per detected pattern, placed at its last defining point."""
     markers = []
@@ -174,7 +180,11 @@ def build_chart_config(
                 })
 
     # --- Volume histogram ---
-    if show_volume:
+    # Skip the volume series entirely when the provider reports no
+    # volume data (e.g. Twelve Data does not return volume for
+    # XAU/USD). Rendering all-zero histograms looks like a dummy
+    # chart and misleads the user about genuine market activity.
+    if show_volume and not _all_zero_volume(df):
         series.append({
             "type": "Histogram",
             "data": _volume_series(df),

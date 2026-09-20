@@ -2,6 +2,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from .service import get_tick
+from .providers.free import FreeMarketProvider
+from .models import Tick
 from .aggregator import CandleAggregator, TIMEFRAME_SECONDS
 from .realtime import hub
 from ..db.database import SessionLocal
@@ -9,6 +11,21 @@ from ..db.models import CandleRecord
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from ..core.config import settings
+
+# Keyless public source for live ticks (gold-api.com / Binance). The 60s
+# streaming loop must never draw from the Twelve Data daily credit budget;
+# the keyed provider is reserved for historical chart data instead.
+_free_provider = FreeMarketProvider()
+
+
+async def _stream_tick(symbol: str) -> Tick:
+    """Prefer the configured provider chain, and only use the keyless public
+    source if the configured chain fails. This respects the Twelve Data key in
+    backend/.env instead of silently degrading to the demo/public fallback."""
+    try:
+        return await get_tick(symbol)
+    except Exception:
+        return await _free_provider.latest_tick(symbol)
 
 SYMBOLS = ('XAUUSD',)  # 'BTCUSDT' commented out to reduce API rate limit usage
 TIMEFRAMES = tuple(TIMEFRAME_SECONDS)
@@ -41,7 +58,7 @@ class MarketStream:
 
     async def _run(self, symbol):
         while True:
-            tick = await get_tick(symbol)
+            tick = await _stream_tick(symbol)
             await hub.publish_tick(tick)
             for tf in TIMEFRAMES:
                 candle, opened = self.aggs[(symbol,tf)].update(tick)
