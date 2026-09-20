@@ -35,7 +35,11 @@ async def analyze(candles, symbol):
     patterns = detect_patterns(candles)
     risk = calculate_risk(candles[-1].close, ind['atr14'], trend=ind['trend'])
     news = await get_news(symbol)
-    return {
+    from ..learning.signal_service import record_signal
+    from ..schemas.learning import SignalCreate
+    from ..db.database import get_db
+
+    analysis_result = {
         'symbol': symbol,
         'price': candles[-1].close,
         'indicators': ind,
@@ -44,6 +48,26 @@ async def analyze(candles, symbol):
         'risk': risk,
         'news': news,
     }
+
+    # Record signal if directional
+    direction = risk.get('direction')
+    if direction in ['long', 'short']:
+        # Access database asynchronously within the analyze function
+        async for db_session in get_db():
+            signal_payload = SignalCreate(
+                symbol=symbol,
+                timeframe='1h',  # Assuming 1h for now, will be dynamic later
+                strategy_config={'name': 'default_strategy'}, # Placeholder
+                indicators_snapshot=ind,
+                direction=direction,
+                entry_price=analysis_result['price'],
+                stop_loss=risk.get('stop_loss'),
+                target=risk.get('target_price'),
+                data_quality='live',
+            )
+            await record_signal(db_session, signal_payload)
+
+    return analysis_result
 
 async def narrate(candles, symbol):
     analysis = await analyze(candles, symbol)

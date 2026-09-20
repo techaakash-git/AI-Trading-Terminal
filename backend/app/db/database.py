@@ -19,18 +19,26 @@ class Base(DeclarativeBase):
 async def init_db():
     global database_available
     from .models import CandleRecord  # noqa: F401 — ensures table is registered
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        database_available = True
-    except (SQLAlchemyError, OSError, asyncio.TimeoutError):
-        # Connection-level failures (ConnectionRefused, DNS, timeout) raise
-        # OSError/TimeoutError, which SQLAlchemy does NOT wrap in SQLAlchemyError.
-        # Treat any DB availability failure as fatal-to-persistence only, not to
-        # the app — the whole point of graceful degradation here.
-        database_available = False
-        logger.warning('Database unavailable; continuing without candle persistence', exc_info=True)
-    return database_available
+
+    # Retry mechanism to handle database startup race condition
+    max_retries = 10
+    retry_delay = 5  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            database_available = True
+            logger.info("Database initialized successfully.")
+            return True
+        except (SQLAlchemyError, OSError, asyncio.TimeoutError):
+            database_available = False
+            if attempt < max_retries - 1:
+                logger.warning(f'Database unavailable (attempt {attempt + 1}/{max_retries}); retrying in {retry_delay}s...')
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.error('Database unavailable after %d attempts; continuing without candle persistence', max_retries)
+                return False
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: yields a database session per request."""

@@ -82,7 +82,7 @@ Copy `.env.example` to `.env`. Key settings:
 
 | Var | Default | Notes |
 |---|---|---|
-| `MARKET_PROVIDER` | `demo` | `demo` or `twelve_data` |
+| `MARKET_PROVIDER` | `demo` | `twelvedata` (primary) or `demo`; keyless `free-public` always backs the chain |
 | `MARKET_API_KEY` | — | Twelve Data key (also `TWELVEDATA_API_KEY`) |
 | `DATABASE_URL` | local asyncpg URL | PostgreSQL 16 |
 | `REDIS_URL` | `redis://localhost:6379/0` | |
