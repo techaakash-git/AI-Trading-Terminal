@@ -30,10 +30,17 @@ interface MarketChartProps {
   symbol: string;
   timeframe: string;
   theme: 'dark' | 'light';
+  showEMA20?: boolean;
+  showEMA50?: boolean;
+  showEMA200?: boolean;
+  showSupportResistance?: boolean;
+  showPatterns?: boolean;
+  showVolume?: boolean;
 }
 
 interface BackendSeries {
   type: SeriesType;
+  kind?: 'SRLine';
   data?: unknown[];
   options?: Record<string, unknown>;
   priceScale?: Record<string, unknown>;
@@ -59,7 +66,17 @@ interface StreamCandle {
  * applied incrementally with series.update(), never by re-fetching the whole
  * history, so the chart stays smooth while the stream is running.
  */
-export default function MarketChart({ symbol, timeframe, theme }: MarketChartProps) {
+export default function MarketChart({
+  symbol,
+  timeframe,
+  theme,
+  showEMA20,
+  showEMA50,
+  showEMA200,
+  showSupportResistance,
+  showPatterns,
+  showVolume,
+}: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -78,8 +95,12 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
         symbol,
         timeframe,
         chart_type: 'candlestick',
-        show_emas: 'true',
-        show_volume: 'true',
+        show_emas_20: showEMA20 !== undefined ? String(showEMA20) : 'true',
+        show_emas_50: showEMA50 !== undefined ? String(showEMA50) : 'true',
+        show_emas_200: showEMA200 !== undefined ? String(showEMA200) : 'true',
+        show_volume: showVolume !== undefined ? String(showVolume) : 'true',
+        show_patterns: showPatterns !== undefined ? String(showPatterns) : 'true',
+        show_support_resistance: showSupportResistance !== undefined ? String(showSupportResistance) : 'true',
         theme,
       });
 
@@ -111,16 +132,46 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
 
       // 3. Add each series from the backend config.
       const alive: { series: ISeriesApi<SeriesType>; type: BackendSeries['type'] }[] = [];
+      const disabledSeriesTypes = new Set<string>();
+
+      // Determine which series types to hide based on overlay toggles.
+      if (!showEMA20 && !showEMA50 && !showEMA200) { disabledSeriesTypes.add('Line'); }
+      if (!showVolume) { disabledSeriesTypes.add('Histogram'); }
+      if (!showPatterns) { /* markers will be skipped below */ }
+      if (!showSupportResistance) { disabledSeriesTypes.add('SRLine'); }
+
       for (const s of config.series ?? []) {
         let definition: SeriesDefinition<SeriesType> | null = null;
         let series: ISeriesApi<SeriesType> | null = null;
+
+        // Skip series types that are toggled off.
+        // Note: For 'Line' types, individual filtering happens below based on kind/label.
+        if (s.type === 'Histogram' && !showVolume) continue;
+        if (s.type === 'Line' && s.kind === 'SRLine' && !showSupportResistance) continue;
 
         if (s.type === 'Candlestick') {
           definition = CandlestickSeries;
           series = chart.addSeries(definition, s.options as DeepPartial<CandlestickSeriesOptions>);
           if (s.data?.length) series.setData(s.data as CandlestickData<Time>[]);
-          if (s.markers?.length) createSeriesMarkers(series, s.markers as SeriesMarker<Time>[]);
+          // Pattern markers: only show if toggled on.
+          if (showPatterns && s.markers?.length) createSeriesMarkers(series, s.markers as SeriesMarker<Time>[]);
         } else if (s.type === 'Line') {
+          // Distinguish EMA lines from S/R lines using the backend-provided 'kind'.
+          const lineKind = (s as BackendSeries & { kind?: string }).kind;
+          const isSRLine = lineKind === 'SRLine';
+          const isEMALine = !isSRLine;
+
+          if (isSRLine && !showSupportResistance) continue;
+          if (isEMALine) {
+            // Check specific EMA toggle based on color or another property
+            // Assuming EMA colors match EMA_COLORS in lw_chart.py:
+            // 20: #2196F3, 50: #FF9800, 200: #9C27B0
+            const color = (s.options as unknown as LineSeriesOptions)?.color;
+            if (color === '#2196F3' && !showEMA20) continue;
+            if (color === '#FF9800' && !showEMA50) continue;
+            if (color === '#9C27B0' && !showEMA200) continue;
+          }
+
           definition = LineSeries;
           series = chart.addSeries(definition, s.options as DeepPartial<LineSeriesOptions>);
           if (s.data?.length) series.setData(s.data as LineData<Time>[]);
@@ -177,7 +228,7 @@ export default function MarketChart({ symbol, timeframe, theme }: MarketChartPro
       chartRef.current?.remove();
       chartRef.current = null;
     };
-  }, [symbol, timeframe, theme]);
+  }, [symbol, timeframe, theme, showEMA20, showEMA50, showEMA200, showSupportResistance, showPatterns, showVolume]);
 
   return <div className="market-chart" ref={containerRef} aria-label={`${symbol} ${timeframe} chart`} />;
 }

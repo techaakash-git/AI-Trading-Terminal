@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   alertNotificationSchema,
   alertSchema,
@@ -9,13 +9,22 @@ import {
   type Analysis,
 } from '../lib/schemas';
 import MarketChart from '../components/MarketChart';
-import TradingViewWidget from '../components/TradingViewWidget';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-export interface AlertToast { alert_id?: string; symbol: string; message: string; }
 
+const ALERT_CONDITION_OPTIONS: Array<{
+  value: AlertFormInput['condition_type'];
+  label: string;
+}> = [
+  { value: 'price', label: 'Price' },
+  { value: 'rsi', label: 'RSI' },
+  { value: 'macd_signal', label: 'MACD Signal' },
+];
+
+export interface AlertToast { alert_id?: string; symbol: string; message: string; }
 export default function Home() {
   const [symbol, setSymbol] = useState('XAUUSD');
+  const [alertConditionType, setAlertConditionType] = useState<AlertFormInput['condition_type']>('price');
   const [timeframe, setTimeframe] = useState('1h');
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,8 +32,6 @@ export default function Home() {
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [alertNotifications, setAlertNotifications] = useState<AlertToast[]>([]);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [chartEngine, setChartEngine] = useState<'lightweight' | 'tradingview'>('tradingview');
-
   // Sync theme with localStorage or system preference on mount
   useEffect(() => {
     const saved = localStorage.getItem('app-theme') as 'dark' | 'light' | null;
@@ -45,18 +52,65 @@ export default function Home() {
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  // Sync chart engine with localStorage on mount
+  // Overlay toggle state with localStorage persistence
+  const [showEMA20, setShowEMA20] = useState(true);
+  const [showEMA50, setShowEMA50] = useState(true);
+  const [showEMA200, setShowEMA200] = useState(true);
+  const [showSupportResistance, setShowSupportResistance] = useState(true);
+  const [showPatterns, setShowPatterns] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
+
   useEffect(() => {
-    const saved = localStorage.getItem('app-chart-engine') as 'lightweight' | 'tradingview' | null;
-    if (saved === 'lightweight' || saved === 'tradingview') {
-      setChartEngine(saved);
-    }
+    // Load overlay preferences from localStorage
+    const savedEMA20 = localStorage.getItem('chart-show-ema-20');
+    const savedEMA50 = localStorage.getItem('chart-show-ema-50');
+    const savedEMA200 = localStorage.getItem('chart-show-ema-200');
+    const savedSR = localStorage.getItem('chart-show-support-resistance');
+    const savedPatterns = localStorage.getItem('chart-show-patterns');
+    const savedVolume = localStorage.getItem('chart-show-volume');
+
+    if (savedEMA20 !== null) setShowEMA20(JSON.parse(savedEMA20));
+    if (savedEMA50 !== null) setShowEMA50(JSON.parse(savedEMA50));
+    if (savedEMA200 !== null) setShowEMA200(JSON.parse(savedEMA200));
+    if (savedSR !== null) setShowSupportResistance(JSON.parse(savedSR));
+    const parsedPatterns = savedPatterns !== null ? JSON.parse(savedPatterns) : true;
+    setShowPatterns(parsedPatterns);
+    if (savedVolume !== null) setShowVolume(JSON.parse(savedVolume));
   }, []);
 
-  const setChartEngineMode = (engine: 'lightweight' | 'tradingview') => {
-    setChartEngine(engine);
-    localStorage.setItem('app-chart-engine', engine);
+  const setShowEMA20State = (show: boolean) => {
+    setShowEMA20(show);
+    localStorage.setItem('chart-show-ema-20', JSON.stringify(show));
   };
+
+  const setShowEMA50State = (show: boolean) => {
+    setShowEMA50(show);
+    localStorage.setItem('chart-show-ema-50', JSON.stringify(show));
+  };
+
+  const setShowEMA200State = (show: boolean) => {
+    setShowEMA200(show);
+    localStorage.setItem('chart-show-ema-200', JSON.stringify(show));
+  };
+
+  const setShowSupportResistanceState = (show: boolean) => {
+    setShowSupportResistance(show);
+    localStorage.setItem('chart-show-support-resistance', JSON.stringify(show));
+  };
+
+  const setShowPatternsState = (show: boolean) => {
+    setShowPatterns(show);
+    localStorage.setItem('chart-show-patterns', JSON.stringify(show));
+  };
+
+  const setShowVolumeState = (show: boolean) => {
+    setShowVolume(show);
+    localStorage.setItem('chart-show-volume', JSON.stringify(show));
+  };
+
+  // Indicator configuration for the dropdown
+  // Removed unused indicatorConfigs array that was causing lint warnings.
+
 
   // Load alerts
   useEffect(() => {
@@ -238,41 +292,92 @@ export default function Home() {
           </button>
         )}
         <button onClick={analyze}>{loading ? 'Analyzing…' : 'Analyze'}</button>
+        <select
+          className="alert-condition-select"
+          aria-label="Alert condition"
+          value={alertConditionType}
+          onChange={(event) => setAlertConditionType(event.target.value as AlertFormInput['condition_type'])}
+        >
+          {ALERT_CONDITION_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
         <button onClick={() => setShowAlertForm(true)}>+ Alert</button>
       </section>
 
       <section className="chart-section">
         <div className="chart-header">
           <span className="chart-title">Price Chart</span>
-          <div className="pills chart-switch" role="group" aria-label="Chart engine">
+        </div>
+
+        {/* Chart Overlay Controls */}
+        <div className="chart-overlays" style={{ padding: '10px 14px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Indicators:</span>
+          <div className="dropdown" style={{ position: 'relative' }}>
             <button
-              type="button"
-              className={chartEngine === 'lightweight' ? 'active' : ''}
-              onClick={() => setChartEngineMode('lightweight')}
-              title="Render with Lightweight Charts v5"
-              aria-pressed={chartEngine === 'lightweight'}
+              onClick={() => {
+                const menu = document.getElementById('indicator-menu');
+                if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+              }}
+              style={{ fontSize: '12px', padding: '6px 10px' }}
             >
-              <span>📈</span>
-              <span>Lightweight</span>
+              Manage Indicators ▾
             </button>
-            <button
-              type="button"
-              className={chartEngine === 'tradingview' ? 'active' : ''}
-              onClick={() => setChartEngineMode('tradingview')}
-              title="Embed the TradingView widget"
-              aria-pressed={chartEngine === 'tradingview'}
+            <div
+              id="indicator-menu"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                backgroundColor: 'var(--bg-color)',
+                border: '1px solid var(--border-color)',
+                padding: '8px',
+                zIndex: 10,
+                display: 'none',
+                minWidth: '150px'
+              }}
             >
-              <span>📊</span>
-              <span>TradingView</span>
-            </button>
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>
+                <input type="checkbox" checked={showEMA20} onChange={(e) => setShowEMA20State(e.target.checked)} />
+                EMA 20
+              </label>
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>
+                <input type="checkbox" checked={showEMA50} onChange={(e) => setShowEMA50State(e.target.checked)} />
+                EMA 50
+              </label>
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>
+                <input type="checkbox" checked={showEMA200} onChange={(e) => setShowEMA200State(e.target.checked)} />
+                EMA 200
+              </label>
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>
+                <input type="checkbox" checked={showSupportResistance} onChange={(e) => setShowSupportResistanceState(e.target.checked)} />
+                S/R
+              </label>
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>
+                <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatternsState(e.target.checked)} />
+                Patterns
+              </label>
+              <label style={{ display: 'block', fontSize: '12px' }}>
+                <input type="checkbox" checked={showVolume} onChange={(e) => setShowVolumeState(e.target.checked)} />
+                Volume
+              </label>
+            </div>
           </div>
         </div>
+
         <div className="chart-frame">
-          {chartEngine === 'lightweight' ? (
-            <MarketChart symbol={symbol} timeframe={timeframe} theme={theme} />
-          ) : (
-            <TradingViewWidget symbol={symbol} timeframe={timeframe} theme={theme} />
-          )}
+            <MarketChart
+              symbol={symbol}
+              timeframe={timeframe}
+              theme={theme}
+              showEMA20={showEMA20}
+              showEMA50={showEMA50}
+              showEMA200={showEMA200}
+              showSupportResistance={showSupportResistance}
+              showPatterns={showPatterns}
+              showVolume={showVolume}
+            />
         </div>
       </section>
 
@@ -418,7 +523,7 @@ function AlertForm({
     notification_channels: ['browser']
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit(formData);
   };
