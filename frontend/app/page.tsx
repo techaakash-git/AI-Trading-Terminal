@@ -9,6 +9,7 @@ import {
   type Analysis,
 } from '../lib/schemas';
 import MarketChart from '../components/MarketChart';
+import TradingViewWidget from '../components/TradingViewWidget';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -32,6 +33,8 @@ export default function Home() {
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [alertNotifications, setAlertNotifications] = useState<AlertToast[]>([]);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [chartEngine, setChartEngine] = useState<'lightweight' | 'tradingview'>('lightweight');
+
   // Sync theme with localStorage or system preference on mount
   useEffect(() => {
     const saved = localStorage.getItem('app-theme') as 'dark' | 'light' | null;
@@ -50,6 +53,19 @@ export default function Home() {
     setTheme(newTheme);
     localStorage.setItem('app-theme', newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
+  // Sync chart engine with localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('app-chart-engine') as 'lightweight' | 'tradingview' | null;
+    if (saved === 'lightweight' || saved === 'tradingview') {
+      setChartEngine(saved);
+    }
+  }, []);
+
+  const setChartEngineMode = (engine: 'lightweight' | 'tradingview') => {
+    setChartEngine(engine);
+    localStorage.setItem('app-chart-engine', engine);
   };
 
   // Overlay toggle state with localStorage persistence
@@ -308,6 +324,28 @@ export default function Home() {
       <section className="chart-section">
         <div className="chart-header">
           <span className="chart-title">Price Chart</span>
+          <div className="pills chart-switch" role="group" aria-label="Chart engine">
+            <button
+              type="button"
+              className={chartEngine === 'lightweight' ? 'active' : ''}
+              onClick={() => setChartEngineMode('lightweight')}
+              title="Render with Lightweight Charts v5"
+              aria-pressed={chartEngine === 'lightweight'}
+            >
+              <span>📈</span>
+              <span>Lightweight</span>
+            </button>
+            <button
+              type="button"
+              className={chartEngine === 'tradingview' ? 'active' : ''}
+              onClick={() => setChartEngineMode('tradingview')}
+              title="Embed the TradingView widget"
+              aria-pressed={chartEngine === 'tradingview'}
+            >
+              <span>📊</span>
+              <span>TradingView</span>
+            </button>
+          </div>
         </div>
 
         {/* Chart Overlay Controls */}
@@ -367,6 +405,13 @@ export default function Home() {
         </div>
 
         <div className="chart-frame">
+          {chartEngine === 'tradingview' ? (
+            <TradingViewWidget
+              symbol={symbol}
+              timeframe={timeframe}
+              theme={theme}
+            />
+          ) : (
             <MarketChart
               symbol={symbol}
               timeframe={timeframe}
@@ -378,6 +423,7 @@ export default function Home() {
               showPatterns={showPatterns}
               showVolume={showVolume}
             />
+          )}
         </div>
       </section>
 
