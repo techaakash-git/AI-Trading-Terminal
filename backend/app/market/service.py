@@ -20,16 +20,20 @@ def provider_status() -> dict:
     return _manager.status()
 
 
-async def get_candles(symbol: str, timeframe: str, limit: int = 300):
+async def get_candles(symbol: str, timeframe: str, limit: int = 300, refresh: bool = False):
     symbol = symbol.upper()
     limit = min(max(limit, 50), 5000)
+    cache_key = (symbol, timeframe, limit)
 
-    cached = _candle_cache.get((symbol, timeframe, limit))
-    if cached is not None:
+    if refresh:
+        _candle_cache.pop(cache_key, None)
+
+    cached = _candle_cache.get(cache_key)
+    if cached is not None and not refresh:
         cached_at, candles = cached
         if time.time() - cached_at <= _CANDLE_CACHE_TTL_S:
             return candles
-        _candle_cache.pop((symbol, timeframe, limit), None)
+        _candle_cache.pop(cache_key, None)
 
     candles = await _manager.historical(symbol, timeframe, limit)
 
@@ -39,7 +43,7 @@ async def get_candles(symbol: str, timeframe: str, limit: int = 300):
     providers = _manager.status().get('providers', [])
     primary = providers[0]['name'] if providers else None
     if primary and _manager.status().get('active_source') == primary:
-        _candle_cache[(symbol, timeframe, limit)] = (time.time(), candles)
+        _candle_cache[cache_key] = (time.time(), candles)
     return candles
 
 

@@ -19,14 +19,13 @@ const ALERT_CONDITION_OPTIONS: Array<{
 }> = [
   { value: 'price', label: 'Price' },
   { value: 'rsi', label: 'RSI' },
-  { value: 'macd_signal', label: 'MACD Signal' },
 ];
 
 export interface AlertToast { alert_id?: string; symbol: string; message: string; }
 export default function Home() {
   const [symbol, setSymbol] = useState('XAUUSD');
   const [alertConditionType, setAlertConditionType] = useState<AlertFormInput['condition_type']>('price');
-  const [timeframe, setTimeframe] = useState('1h');
+  const [timeframe, setTimeframe] = useState('1m');
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -257,7 +256,7 @@ export default function Home() {
           <div className="header-divider-vertical" />
 
           <div className="control-group">
-            <span className="control-label">Theme</span>
+            {/* <span className="control-label">Theme</span> */}
             <div className="theme-pills">
               <button
                 type="button"
@@ -308,7 +307,7 @@ export default function Home() {
           </button>
         )}
         <button onClick={analyze}>{loading ? 'Analyzing…' : 'Analyze'}</button>
-        <select
+        {/* <select
           className="alert-condition-select"
           aria-label="Alert condition"
           value={alertConditionType}
@@ -317,7 +316,7 @@ export default function Home() {
           {ALERT_CONDITION_OPTIONS.map(option => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
-        </select>
+        </select> */}
         <button onClick={() => setShowAlertForm(true)}>+ Alert</button>
       </section>
 

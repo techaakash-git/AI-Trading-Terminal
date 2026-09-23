@@ -79,6 +79,7 @@ export default function MarketChart({
 }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const lastCandleTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -101,6 +102,7 @@ export default function MarketChart({
         show_volume: showVolume !== undefined ? String(showVolume) : 'true',
         show_patterns: showPatterns !== undefined ? String(showPatterns) : 'true',
         show_support_resistance: showSupportResistance !== undefined ? String(showSupportResistance) : 'true',
+        refresh: 'true',
         theme,
       });
 
@@ -185,6 +187,14 @@ export default function MarketChart({
         if (definition && series) alive.push({ series, type: s.type });
       }
 
+      const initialCandles = config.series?.find((s) => s.type === 'Candlestick')?.data as Array<{ time?: number | string }> | undefined;
+      if (initialCandles?.length) {
+        const lastInitialTime = Number(initialCandles[initialCandles.length - 1]?.time);
+        if (Number.isFinite(lastInitialTime)) {
+          lastCandleTimeRef.current = lastInitialTime;
+        }
+      }
+
       // Pin the right edge to "now".
       chart.timeScale().scrollToRealTime();
 
@@ -201,7 +211,15 @@ export default function MarketChart({
         if (message?.type !== 'candle' || !message.data) return; // heartbeat/ticks ignored
 
         const { time, open, high, low, close, volume } = message.data;
-        const ts = time as UTCTimestamp;
+        const ts = Number(time) as UTCTimestamp;
+        if (!Number.isFinite(ts)) return;
+
+        const lastSeenTime = lastCandleTimeRef.current;
+        if (lastSeenTime !== null && ts < lastSeenTime) {
+          console.warn('[MarketChart] Ignoring stale candle update.', { lastSeenTime, ts });
+          return;
+        }
+        lastCandleTimeRef.current = ts;
 
         const candleSeries = alive.find((a) => a.type === 'Candlestick');
         if (candleSeries) candleSeries.series.update({ time: ts, open, high, low, close });

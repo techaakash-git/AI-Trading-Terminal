@@ -31,6 +31,34 @@ def test_demo_chain_reports_no_rate_limit(monkeypatch):
     assert all(p['rate_limited'] is False for p in status['providers'])
 
 
+def test_get_candles_refresh_forces_live_provider_fetch(monkeypatch):
+    calls = {'count': 0}
+
+    async def fake_historical(symbol, timeframe, limit):
+        calls['count'] += 1
+        return [
+            {'time': 1, 'open': 10, 'high': 11, 'low': 9, 'close': 10.5, 'volume': 100},
+            {'time': 2, 'open': 10.5, 'high': 12, 'low': 10, 'close': 11.5, 'volume': 120},
+        ]
+
+    class FakeManager:
+        async def historical(self, symbol, timeframe, limit):
+            return await fake_historical(symbol, timeframe, limit)
+
+        def status(self):
+            return {'providers': [{'name': 'development-demo'}], 'active_source': 'development-demo'}
+
+    service._manager = FakeManager()
+    service._candle_cache.clear()
+
+    first = asyncio.run(service.get_candles('XAUUSD', '1h', 50))
+    second = asyncio.run(service.get_candles('XAUUSD', '1h', 50, refresh=True))
+
+    assert len(first) == 2
+    assert len(second) == 2
+    assert calls['count'] == 2
+
+
 def test_stream_prefers_configured_provider_over_free_public_fallback(monkeypatch):
     async def fake_get_tick(symbol):
         return Tick(symbol=symbol, price=1234.56, timestamp=datetime.now(timezone.utc), volume=42.0)

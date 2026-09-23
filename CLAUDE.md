@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+
+## Summary of Run project locally:
+Terminal 1 (Databases): docker compose up postgres redis -d
+Terminal 2 (Backend): cd backend && .venv/Scripts/activate && uvicorn app.main:app --reload
+Terminal 3 (Frontend): cd frontend && npm run dev
+
+
+
 ## Core rule
 
 **Python computes every trading number. The LLM only explains or narrates pre-computed data.** Never move calculations into the AI layer. See `AGENT_RULES.md` for the full list of invariants — read it before any architectural change. Read `planning.md` before making structural changes.

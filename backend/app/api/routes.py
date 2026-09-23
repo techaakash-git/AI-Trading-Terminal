@@ -19,8 +19,14 @@ router.include_router(auth_router)
 @router.get('/health')
 async def health(): return {'status':'ok','service':'trading-api','version':'1.1.0', 'market': provider_status(), 'redis': hub.redis_available}
 @router.get('/market/candles')
-async def candles(symbol='BTCUSDT',timeframe='1h',limit:int=Query(300,ge=50,le=5000)):
- d=await get_candles(symbol,timeframe,limit); return {'symbol':symbol.upper(),'timeframe':timeframe,'candles':[c.model_dump() for c in d]}
+async def candles(
+    symbol: str = 'BTCUSDT',
+    timeframe: str = '1m',
+    limit: int = Query(300, ge=50, le=5000),
+    refresh: bool = Query(True, description='Force a fresh provider call so chart data refreshes on each request.'),
+):
+    d = await get_candles(symbol, timeframe, limit, refresh=refresh)
+    return {'symbol': symbol.upper(), 'timeframe': timeframe, 'candles': [c.model_dump() for c in d]}
 @router.get('/market/tick/{symbol}')
 async def tick(symbol): return (await get_tick(symbol)).model_dump(mode='json')
 @router.get('/market/status')
@@ -42,17 +48,18 @@ async def run_backtest(payload:dict):
 @router.get('/chart/config')
 async def chart_config(
     symbol: str = 'BTCUSDT',
-    timeframe: str = '1h',
+    timeframe: str = '1m',
     chart_type: str = 'candlestick',
     show_emas: bool = True,
     show_volume: bool = True,
     theme: str = 'dark',
+    refresh: bool = Query(True, description='Force a fresh provider call so the lightweight chart refreshes on each request.'),
 ):
     """Return Lightweight Charts config for the given symbol/timeframe."""
     if theme not in ('dark', 'light'):
         theme = 'dark'
     import pandas as pd
-    candles_data = await get_candles(symbol, timeframe, 300)
+    candles_data = await get_candles(symbol, timeframe, 300, refresh=refresh)
     analysis_data = await analyze(candles_data, symbol.upper())
 
     patterns = analysis_data.get('patterns', [])
